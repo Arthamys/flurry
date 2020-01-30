@@ -1,8 +1,8 @@
 use crate::raw::Table;
+use core::borrow::Borrow;
+use core::sync::atomic::Ordering;
 use crossbeam_epoch::{Atomic, Guard, Shared};
 use parking_lot::Mutex;
-use std::borrow::Borrow;
-use std::sync::atomic::Ordering;
 
 /// Entry in a bin.
 ///

@@ -1,7 +1,11 @@
 use crate::node::*;
+#[cfg(not(feature = "std"))]
+use alloc::boxed::Box;
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+use core::fmt::Debug;
+use core::sync::atomic::Ordering;
 use crossbeam_epoch::{Atomic, Guard, Owned, Shared};
-use std::fmt::Debug;
-use std::sync::atomic::Ordering;
 
 #[derive(Debug)]
 pub(crate) struct Table<K, V> {
@@ -35,7 +39,10 @@ impl<K, V> Table<K, V> {
         // anything in the map.
         let guard = unsafe { crossbeam_epoch::unprotected() };
 
-        for bin in Vec::from(std::mem::replace(&mut self.bins, vec![].into_boxed_slice())) {
+        for bin in Vec::from(core::mem::replace(
+            &mut self.bins,
+            vec![].into_boxed_slice(),
+        )) {
             if bin.load(Ordering::SeqCst, guard).is_null() {
                 // bin was never used
                 continue;

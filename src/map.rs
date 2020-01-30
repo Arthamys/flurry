@@ -1,15 +1,15 @@
 use crate::iter::*;
 use crate::node::*;
 use crate::raw::*;
+use core::borrow::Borrow;
+use core::hash::{BuildHasher, Hash, Hasher};
+use core::iter::FromIterator;
+use core::sync::atomic::{AtomicIsize, AtomicUsize, Ordering};
 use crossbeam_epoch::{self as epoch, Atomic, Guard, Owned, Shared};
-use std::borrow::Borrow;
+#[cfg(feature = "std")]
 use std::fmt::{self, Debug, Formatter};
-use std::hash::{BuildHasher, Hash, Hasher};
-use std::iter::FromIterator;
-use std::sync::{
-    atomic::{AtomicIsize, AtomicUsize, Ordering},
-    Once,
-};
+#[cfg(feature = "std")]
+use std::sync::Once;
 
 const ISIZE_BITS: usize = core::mem::size_of::<isize>() * 8;
 
@@ -43,8 +43,10 @@ const MAX_RESIZERS: isize = (1 << (ISIZE_BITS - RESIZE_STAMP_BITS)) - 1;
 /// The bit shift for recording size stamp in `size_ctl`.
 const RESIZE_STAMP_SHIFT: usize = ISIZE_BITS - RESIZE_STAMP_BITS;
 
+#[cfg(feature = "std")]
 static NCPU_INITIALIZER: Once = Once::new();
-static NCPU: AtomicUsize = AtomicUsize::new(0);
+#[cfg(feature = "std")]
+static NCPU: AtomicUsize = AtomicUsize::new(1);
 
 macro_rules! load_factor {
     ($n: expr) => {
@@ -307,6 +309,15 @@ where
             // try to allocate the table
             let mut sc = self.size_ctl.load(Ordering::SeqCst);
             if sc < 0 {
+                #[cfg(not(feature = "std"))]
+                // for there to be a race, there must be another thread running
+                // concurrently with us. That thread cannot be blocked on us,
+                // since we are not in any mutually-exclusive section. So our
+                // goal is just to not waste cycles and give it some time to
+                // complete. It is not a requirement that we fully yield.
+                core::sync::atomic::spin_loop_hint();
+
+                #[cfg(feature = "std")]
                 // we lost the initialization race; just spin
                 std::thread::yield_now();
                 continue;
@@ -795,7 +806,7 @@ where
     fn add_count(&self, n: isize, resize_hint: Option<usize>, guard: &Guard) {
         // TODO: implement the Java CounterCell business here
 
-        use std::cmp;
+        use core::cmp;
         let mut count = match n.cmp(&0) {
             cmp::Ordering::Greater => {
                 let n = n as usize;
@@ -884,7 +895,7 @@ where
         let ncpu = num_cpus();
 
         let stride = if ncpu > 1 { (n >> 3) / ncpu } else { n };
-        let stride = std::cmp::max(stride as isize, MIN_TRANSFER_STRIDE);
+        let stride = core::cmp::max(stride as isize, MIN_TRANSFER_STRIDE);
 
         if next_table.is_null() {
             // we are initiating a resize
@@ -1169,7 +1180,7 @@ where
             // TODO: find out if this is neccessary
             let size = size + (size >> 1) + 1;
 
-            std::cmp::min(MAXIMUM_CAPACITY, size.next_power_of_two())
+            core::cmp::min(MAXIMUM_CAPACITY, size.next_power_of_two())
         } as isize;
 
         loop {
@@ -1556,6 +1567,7 @@ where
     }
 }
 
+#[cfg(feature = "std")]
 impl<K, V, S> PartialEq for HashMap<K, V, S>
 where
     K: Sync + Send + Clone + Eq + Hash,
@@ -1573,6 +1585,7 @@ where
     }
 }
 
+#[cfg(feature = "std")]
 impl<K, V, S> Eq for HashMap<K, V, S>
 where
     K: Sync + Send + Clone + Eq + Hash,
@@ -1581,6 +1594,7 @@ where
 {
 }
 
+#[cfg(feature = "std")]
 impl<K, V, S> fmt::Debug for HashMap<K, V, S>
 where
     K: Sync + Send + Clone + Debug + Eq + Hash,
@@ -1617,6 +1631,7 @@ impl<K, V, S> Drop for HashMap<K, V, S> {
     }
 }
 
+#[cfg(feature = "std")]
 impl<K, V, S> Extend<(K, V)> for &HashMap<K, V, S>
 where
     K: Sync + Send + Clone + Hash + Eq,
@@ -1644,6 +1659,7 @@ where
     }
 }
 
+#[cfg(feature = "std")]
 impl<'a, K, V, S> Extend<(&'a K, &'a V)> for &HashMap<K, V, S>
 where
     K: Sync + Send + Copy + Hash + Eq,
@@ -1706,6 +1722,7 @@ where
     }
 }
 
+#[cfg(feature = "std")]
 impl<K, V, S> Clone for HashMap<K, V, S>
 where
     K: Sync + Send + Clone + Hash + Eq,
@@ -1724,16 +1741,19 @@ where
     }
 }
 
-#[cfg(not(miri))]
 #[inline]
-/// Returns the number of physical CPUs in the machine (_O(1)_).
+#[cfg(all(not(miri), feature = "std"))]
+/// Returns the number of physical CPUs in the machine.
+/// Returns `1` in `no_std` environment.
 fn num_cpus() -> usize {
     NCPU_INITIALIZER.call_once(|| NCPU.store(num_cpus::get_physical(), Ordering::Relaxed));
     NCPU.load(Ordering::Relaxed)
 }
 
-#[cfg(miri)]
 #[inline]
+#[cfg(any(miri, not(feature = "std")))]
+/// Returns the number of physical CPUs in the machine.
+/// Returns `1` in `no_std` environment.
 const fn num_cpus() -> usize {
     1
 }
