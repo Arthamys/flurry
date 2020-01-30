@@ -58,13 +58,19 @@ macro_rules! load_factor {
 /// A concurrent hash table.
 ///
 /// See the [crate-level documentation](index.html) for details.
-pub struct HashMap<K, V, S = crate::DefaultHashBuilder> {
+#[cfg(feature = "std")]
+pub struct HashMap<K, V, L = parking_lot::RawMutex, S = crate::DefaultHashBuilder>
+where
+    L: lock_api::RawMutex,
+    S: BuildHasher,
+{
+    // NOTE: if you change any field here, you must _also_ change it in the copy below
     /// The array of bins. Lazily initialized upon first insertion.
     /// Size is always a power of two. Accessed directly by iterators.
-    table: Atomic<Table<K, V>>,
+    table: Atomic<Table<K, V, L>>,
 
     /// The next table to use; non-null only while resizing.
-    next_table: Atomic<Table<K, V>>,
+    next_table: Atomic<Table<K, V, L>>,
 
     /// The next table index (plus one) to split while resizing.
     transfer_index: AtomicIsize,
@@ -82,10 +88,36 @@ pub struct HashMap<K, V, S = crate::DefaultHashBuilder> {
     build_hasher: S,
 }
 
-impl<K, V, S> Default for HashMap<K, V, S>
+/// A concurrent hash table.
+///
+/// Note that `ahash::RandomState`, the default value of `S`, is not
+/// cryptographically secure. Therefore it is strongly recommended that you do
+/// not use this hash for cryptographic purproses.
+/// See [`ahash`](https://github.com/tkaitchuck/ahash) for more information.
+///
+/// See the [crate-level documentation](index.html) for details.
+#[cfg(not(feature = "std"))]
+pub struct HashMap<K, V, L, S = crate::DefaultHashBuilder>
+where
+    L: lock_api::RawMutex,
+    S: BuildHasher,
+{
+    // NOTE: this is, and must be, an exact copy of the `HashMap` definition above, with just the
+    // default type for `L` unset. This is because in no_std environments, there is no sensible
+    // default lock type for us to use.
+    table: Atomic<Table<K, V, L>>,
+    next_table: Atomic<Table<K, V, L>>,
+    transfer_index: AtomicIsize,
+    count: AtomicUsize,
+    size_ctl: AtomicIsize,
+    build_hasher: S,
+}
+
+impl<K, V, L, S> Default for HashMap<K, V, L, S>
 where
     K: Sync + Send + Clone + Hash + Eq,
     V: Sync + Send,
+    L: lock_api::RawMutex,
     S: BuildHasher + Default,
 {
     fn default() -> Self {
@@ -93,10 +125,11 @@ where
     }
 }
 
-impl<K, V, S> HashMap<K, V, S>
+impl<K, V, L, S> HashMap<K, V, L, S>
 where
     K: Sync + Send + Clone + Hash + Eq,
     V: Sync + Send,
+    L: lock_api::RawMutex,
     S: BuildHasher + Default,
 {
     /// Creates a new, empty map with the default initial table size (16).
@@ -111,10 +144,11 @@ where
     }
 }
 
-impl<K, V, S> HashMap<K, V, S>
+impl<K, V, L, S> HashMap<K, V, L, S>
 where
     K: Sync + Send + Clone + Hash + Eq,
     V: Sync + Send,
+    L: lock_api::RawMutex,
     S: BuildHasher,
 {
     /// Creates an empty map which will use `hash_builder` to hash keys.
@@ -159,10 +193,11 @@ where
     }
 }
 
-impl<K, V, S> HashMap<K, V, S>
+impl<K, V, L, S> HashMap<K, V, L, S>
 where
     K: Sync + Send + Clone + Hash + Eq,
     V: Sync + Send,
+    L: lock_api::RawMutex,
     S: BuildHasher,
 {
     fn hash<Q: ?Sized + Hash>(&self, key: &Q) -> u64 {
@@ -184,7 +219,7 @@ where
         self.get(key, &guard).is_some()
     }
 
-    fn get_node<'g, Q>(&'g self, key: &Q, guard: &'g Guard) -> Option<&'g Node<K, V>>
+    fn get_node<'g, Q>(&'g self, key: &Q, guard: &'g Guard) -> Option<&'g Node<K, V, L>>
     where
         K: Borrow<Q>,
         Q: ?Sized + Hash + Eq,
@@ -298,7 +333,7 @@ where
         unsafe { v.as_ref() }.map(|v| (&node.key, v))
     }
 
-    fn init_table<'g>(&'g self, guard: &'g Guard) -> Shared<'g, Table<K, V>> {
+    fn init_table<'g>(&'g self, guard: &'g Guard) -> Shared<'g, Table<K, V, L>> {
         loop {
             let table = self.table.load(Ordering::SeqCst, guard);
             // safety: we loaded the table while epoch was pinned. table won't be deallocated until
@@ -370,7 +405,7 @@ where
             value: Atomic::new(value),
             hash: h,
             next: Atomic::null(),
-            lock: parking_lot::Mutex::new(()),
+            lock: lock_api::Mutex::new(()),
         }));
 
         loop {
@@ -767,10 +802,10 @@ where
 
     fn help_transfer<'g>(
         &'g self,
-        table: Shared<'g, Table<K, V>>,
-        next_table: *const Table<K, V>,
+        table: Shared<'g, Table<K, V, L>>,
+        next_table: *const Table<K, V, L>,
         guard: &'g Guard,
-    ) -> Shared<'g, Table<K, V>> {
+    ) -> Shared<'g, Table<K, V, L>> {
         if table.is_null() || next_table.is_null() {
             return table;
         }
@@ -883,8 +918,8 @@ where
 
     fn transfer<'g>(
         &'g self,
-        table: Shared<'g, Table<K, V>>,
-        mut next_table: Shared<'g, Table<K, V>>,
+        table: Shared<'g, Table<K, V, L>>,
+        mut next_table: Shared<'g, Table<K, V, L>>,
         guard: &'g Guard,
     ) {
         // safety: table was read while `guard` was held. the code that drops table only drops it
@@ -1120,7 +1155,7 @@ where
                         *link = Owned::new(BinEntry::Node(Node {
                             hash: node.hash,
                             key: node.key.clone(),
-                            lock: parking_lot::Mutex::new(()),
+                            lock: lock_api::Mutex::new(()),
                             value: node.value.clone(),
                             next: Atomic::from(*link),
                         }))
@@ -1380,7 +1415,7 @@ where
 
                     // TODO: tree nodes
                     let mut e = bin;
-                    let mut pred: Shared<'_, BinEntry<K, V>> = Shared::null();
+                    let mut pred: Shared<'_, BinEntry<K, V, L>> = Shared::null();
                     loop {
                         // safety: either e is bin, in which case it is valid due to the above,
                         // or e was obtained from a next pointer. Any next pointer obtained from
@@ -1513,7 +1548,7 @@ where
     /// The iterator element type is `(&'g K, &'g V)`.
     ///
     /// To obtain a `Guard`, use [`epoch::pin`].
-    pub fn iter<'g>(&'g self, guard: &'g Guard) -> Iter<'g, K, V> {
+    pub fn iter<'g>(&'g self, guard: &'g Guard) -> Iter<'g, K, V, L> {
         let table = self.table.load(Ordering::SeqCst, guard);
         let node_iter = NodeIter::new(table, guard);
         Iter { node_iter, guard }
@@ -1523,7 +1558,7 @@ where
     /// The iterator element type is `&'g K`.
     ///
     /// To obtain a `Guard`, use [`epoch::pin`].
-    pub fn keys<'g>(&'g self, guard: &'g Guard) -> Keys<'g, K, V> {
+    pub fn keys<'g>(&'g self, guard: &'g Guard) -> Keys<'g, K, V, L> {
         let table = self.table.load(Ordering::SeqCst, guard);
         let node_iter = NodeIter::new(table, guard);
         Keys { node_iter }
@@ -1533,7 +1568,7 @@ where
     /// The iterator element type is `&'g V`.
     ///
     /// To obtain a `Guard`, use [`epoch::pin`].
-    pub fn values<'g>(&'g self, guard: &'g Guard) -> Values<'g, K, V> {
+    pub fn values<'g>(&'g self, guard: &'g Guard) -> Values<'g, K, V, L> {
         let table = self.table.load(Ordering::SeqCst, guard);
         let node_iter = NodeIter::new(table, guard);
         Values { node_iter, guard }
@@ -1568,11 +1603,12 @@ where
 }
 
 #[cfg(feature = "std")]
-impl<K, V, S> PartialEq for HashMap<K, V, S>
+impl<K, V, L, S> PartialEq for HashMap<K, V, L, S>
 where
     K: Sync + Send + Clone + Eq + Hash,
     V: Sync + Send + PartialEq,
     S: BuildHasher,
+    L: lock_api::RawMutex,
 {
     fn eq(&self, other: &Self) -> bool {
         if self.len() != other.len() {
@@ -1586,20 +1622,22 @@ where
 }
 
 #[cfg(feature = "std")]
-impl<K, V, S> Eq for HashMap<K, V, S>
+impl<K, V, L, S> Eq for HashMap<K, V, L, S>
 where
     K: Sync + Send + Clone + Eq + Hash,
     V: Sync + Send + Eq,
     S: BuildHasher,
+    L: lock_api::RawMutex,
 {
 }
 
 #[cfg(feature = "std")]
-impl<K, V, S> fmt::Debug for HashMap<K, V, S>
+impl<K, V, L, S> fmt::Debug for HashMap<K, V, L, S>
 where
     K: Sync + Send + Clone + Debug + Eq + Hash,
     V: Sync + Send + Debug,
     S: BuildHasher,
+    L: lock_api::RawMutex,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let guard = epoch::pin();
@@ -1607,7 +1645,11 @@ where
     }
 }
 
-impl<K, V, S> Drop for HashMap<K, V, S> {
+impl<K, V, L, S> Drop for HashMap<K, V, L, S>
+where
+    L: lock_api::RawMutex,
+    S: BuildHasher,
+{
     fn drop(&mut self) {
         // safety: we have &mut self _and_ all references we have returned are bound to the
         // lifetime of their borrow of self, so there cannot be any outstanding references to
@@ -1632,11 +1674,12 @@ impl<K, V, S> Drop for HashMap<K, V, S> {
 }
 
 #[cfg(feature = "std")]
-impl<K, V, S> Extend<(K, V)> for &HashMap<K, V, S>
+impl<K, V, L, S> Extend<(K, V)> for &HashMap<K, V, L, S>
 where
     K: Sync + Send + Clone + Hash + Eq,
     V: Sync + Send,
     S: BuildHasher,
+    L: lock_api::RawMutex,
 {
     #[inline]
     fn extend<T: IntoIterator<Item = (K, V)>>(&mut self, iter: T) {
@@ -1660,11 +1703,12 @@ where
 }
 
 #[cfg(feature = "std")]
-impl<'a, K, V, S> Extend<(&'a K, &'a V)> for &HashMap<K, V, S>
+impl<'a, K, V, L, S> Extend<(&'a K, &'a V)> for &HashMap<K, V, L, S>
 where
     K: Sync + Send + Copy + Hash + Eq,
     V: Sync + Send + Copy,
     S: BuildHasher,
+    L: lock_api::RawMutex,
 {
     #[inline]
     fn extend<T: IntoIterator<Item = (&'a K, &'a V)>>(&mut self, iter: T) {
@@ -1672,11 +1716,12 @@ where
     }
 }
 
-impl<K, V, S> FromIterator<(K, V)> for HashMap<K, V, S>
+impl<K, V, L, S> FromIterator<(K, V)> for HashMap<K, V, L, S>
 where
     K: Sync + Send + Clone + Hash + Eq,
     V: Sync + Send,
     S: BuildHasher + Default,
+    L: lock_api::RawMutex,
 {
     fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> Self {
         let mut iter = iter.into_iter();
@@ -1698,11 +1743,12 @@ where
     }
 }
 
-impl<'a, K, V, S> FromIterator<(&'a K, &'a V)> for HashMap<K, V, S>
+impl<'a, K, V, L, S> FromIterator<(&'a K, &'a V)> for HashMap<K, V, L, S>
 where
     K: Sync + Send + Copy + Hash + Eq,
     V: Sync + Send + Copy,
     S: BuildHasher + Default,
+    L: lock_api::RawMutex,
 {
     #[inline]
     fn from_iter<T: IntoIterator<Item = (&'a K, &'a V)>>(iter: T) -> Self {
@@ -1710,11 +1756,12 @@ where
     }
 }
 
-impl<'a, K, V, S> FromIterator<&'a (K, V)> for HashMap<K, V, S>
+impl<'a, K, V, L, S> FromIterator<&'a (K, V)> for HashMap<K, V, L, S>
 where
     K: Sync + Send + Copy + Hash + Eq,
     V: Sync + Send + Copy,
     S: BuildHasher + Default,
+    L: lock_api::RawMutex,
 {
     #[inline]
     fn from_iter<T: IntoIterator<Item = &'a (K, V)>>(iter: T) -> Self {
@@ -1723,13 +1770,14 @@ where
 }
 
 #[cfg(feature = "std")]
-impl<K, V, S> Clone for HashMap<K, V, S>
+impl<K, V, L, S> Clone for HashMap<K, V, L, S>
 where
     K: Sync + Send + Clone + Hash + Eq,
     V: Sync + Send + Clone,
     S: BuildHasher + Clone,
+    L: lock_api::RawMutex,
 {
-    fn clone(&self) -> HashMap<K, V, S> {
+    fn clone(&self) -> HashMap<K, V, L, S> {
         let cloned_map = Self::with_capacity_and_hasher(self.build_hasher.clone(), self.len());
         {
             let guard = epoch::pin();
