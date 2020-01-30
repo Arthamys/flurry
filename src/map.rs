@@ -1983,6 +1983,8 @@ mod tests {
 /// drop(guard);
 /// drop(r);
 /// ```
+#[allow(dead_code)]
+struct CompileFailTests;
 
 #[test]
 fn replace_empty() {
@@ -2031,6 +2033,3 @@ fn replace_existing_observed_value_non_matching() {
         assert_eq!(*map.get(&42, &guard).unwrap(), 42);
     }
 }
-
-#[allow(dead_code)]
-struct CompileFailTests;
