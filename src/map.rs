@@ -106,7 +106,7 @@ where
     ///
     /// ```
     /// use flurry::HashMap;
-    /// let mut map: HashMap<&str, i32> = HashMap::new();
+    /// let map: HashMap<&str, i32> = HashMap::new();
     /// ```
     pub fn new() -> Self {
         Self::with_hasher(S::default())
@@ -122,7 +122,7 @@ where
     ///
     /// ```
     /// use flurry::HashMap;
-    /// let mut map: HashMap<&str, i32> = HashMap::with_capacity(10);
+    /// let map: HashMap<&str, i32> = HashMap::with_capacity(10);
     /// ```
     pub fn with_capacity(capacity: usize) -> Self {
         Self::with_capacity_and_hasher(S::default(), capacity)
@@ -153,7 +153,7 @@ where
     ///
     /// let s = RandomState::new();
     /// let guard = epoch::pin();
-    /// let mut map = HashMap::with_hasher(s);
+    /// let map = HashMap::with_hasher(s);
     /// map.insert(1, 2, &guard);
     /// ```
     pub fn with_hasher(hash_builder: S) -> Self {
@@ -186,7 +186,7 @@ where
     ///
     /// let s = RandomState::new();
     /// let guard = epoch::pin();
-    /// let mut map = HashMap::with_capacity_and_hasher(s, 10);
+    /// let map = HashMap::with_capacity_and_hasher(s, 10);
     /// map.insert(1, 2, &guard);
     /// ```
     /// ## Notes
@@ -234,7 +234,7 @@ where
     /// use crossbeam_epoch as epoch;
     /// use std::collections::hash_map::RandomState;
     ///
-    /// let mut map : HashMap<i32, &str, RandomState> = HashMap::new();
+    /// let map : HashMap<i32, &str, RandomState> = HashMap::new();
     /// let guard = epoch::pin();
     /// map.insert(1, "a", &guard);
     /// assert_eq!(map.contains_key(&1, &guard), true);
@@ -316,7 +316,7 @@ where
     /// use crossbeam_epoch as epoch;
     /// use std::collections::hash_map::RandomState;
     ///
-    /// let mut map : HashMap<i32, &str, RandomState> = HashMap::new();
+    /// let map : HashMap<i32, &str, RandomState> = HashMap::new();
     /// let guard = epoch::pin();
     /// map.insert(1, "a", &guard);
     /// assert_eq!(map.get(&1, &guard), Some(&"a"));
@@ -356,7 +356,7 @@ where
     /// use crossbeam_epoch as epoch;
     /// use std::collections::hash_map::RandomState;
     ///
-    /// let mut map : HashMap<i32, i32, RandomState> = HashMap::new();
+    /// let map : HashMap<i32, i32, RandomState> = HashMap::new();
     /// let guard = epoch::pin();
     /// map.insert(1, 42, &guard);
     /// assert_eq!(map.get_and(&1, |num| num * 2, &guard), Some(84));
@@ -450,8 +450,9 @@ where
     /// ```
     /// use flurry::HashMap;
     /// use crossbeam_epoch as epoch;
+    /// use std::collections::hash_map::RandomState;
     ///
-    /// let mut map = HashMap::new();
+    /// let map : HashMap<i32, &str, RandomState> = HashMap::new();
     /// let guard = epoch::pin();
     /// assert_eq!(map.insert(37, "a", &guard), None);
     /// assert_eq!(map.is_empty(), false);
