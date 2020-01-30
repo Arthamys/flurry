@@ -1402,8 +1402,21 @@ where
     }
 
     #[inline]
-    /// Tries to reserve capacity for at least additional more elements.
-    /// The collection may reserve more space to avoid frequent reallocations.
+    /// Tries to reserve capacity for at least `additional` more elements to
+    /// be inserted in the `HashMap`. The collection may reserve more space to
+    /// avoid frequent reallocations.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use flurry::HashMap;
+    /// use crossbeam_epoch as epoch;
+    ///
+    /// let map: HashMap<&str, i32> = HashMap::new();
+    /// let guard = epoch::pin();
+    ///
+    /// map.reserve(10, &guard);
+    /// ```
     pub fn reserve(&self, additional: usize, guard: &Guard) {
         let absolute = self.len() + additional;
         self.try_presize(absolute, guard);
