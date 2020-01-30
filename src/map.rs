@@ -1417,8 +1417,13 @@ where
     ///
     /// map.reserve(10, &guard);
     /// ```
+    ///
+    /// # Note
+    ///
+    /// Reserving does not panic in flurry. If the new size is invalid, no
+    /// reallocation takes place.
     pub fn reserve(&self, additional: usize, guard: &Guard) {
-        let absolute = self.len() + additional;
+            let absolute = self.len() + additional;
         self.try_presize(absolute, guard);
     }
 
