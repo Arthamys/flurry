@@ -97,7 +97,17 @@ where
     V: Sync + Send,
     S: BuildHasher + Default,
 {
-    /// Creates a new, empty map with the default initial table size (16).
+    /// Creates an empty `HashMap`.
+    ///
+    /// The hash map is initially created with a capacity of 0, so it will not allocate until it
+    /// is first inserted into.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use flurry::HashMap;
+    /// let mut map: HashMap<&str, i32> = HashMap::new();
+    /// ```
     pub fn new() -> Self {
         Self::with_hasher(S::default())
     }
