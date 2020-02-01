@@ -74,7 +74,7 @@
 //! and to support high initial insertion rates on an empty table by many threads.
 //!
 //! This map usually acts as a binned (bucketed) hash table.  Each key-value mapping is held in a
-//! `BinEntry.  Most nodes are of type `BinEntry::Node` with hash, key, value, and a `next` field.
+//! `BinEntry`.  Most nodes are of type `BinEntry::Node` with hash, key, value, and a `next` field.
 //!  However, some nodes are of type `BinEntry::Moved`; these "forwarding nodes" are placed at the
 //!  heads of bins during resizing. The Java version also has other special node types, but these
 //!  have not yet been implemented in this port. These special nodes are all either uncommon or
@@ -100,11 +100,13 @@
 //! The main disadvantage of per-bin locks is that other update operations on other nodes in a bin
 //! list protected by the same lock can stall, for example when user `Eq` implementations or
 //! mapping functions take a long time.  However, statistically, under random hash codes, this is
-//! not a common problem.  Ideally, the frequency of nodes in bins follows a Poisson distribution
-//! (http://en.wikipedia.org/wiki/Poisson_distribution) with a parameter of about 0.5 on average,
-//! given the resizing threshold of 0.75, although with a large variance because of resizing
-//! granularity. Ignoring variance, the expected occurrences of list size `k` are `exp(-0.5) *
-//! pow(0.5, k) / factorial(k)`. The first values are:
+//! not a common problem.  Ideally, the frequency of nodes in bins follows a
+//! [Poisson distribution](http://en.wikipedia.org/wiki/Poisson_distribution) with a parameter of
+//! about 0.5 on average, given the resizing threshold of 0.75, although with a large variance because
+//! of resizing granularity. Ignoring variance, the expected occurrences of list size `k` are `exp(-0.5) *
+//! pow(0.5, k) / factorial(k)`.
+//!
+//! The first values are:
 //!
 //! ```text
 //! 0:    0.60653066
@@ -123,7 +125,7 @@
 //! #elements)` under random hashes.
 //!
 //! Actual hash code distributions encountered in practice sometimes deviate significantly from
-//! uniform randomness.  This includes the case when `N > (1<<30)`, so some keys MUST collide.
+//! uniform randomness.  This includes the case when `N > (1<<30)`, so some keys __MUST__ collide.
 //! Similarly for dumb or hostile usages in which multiple keys are designed to have identical hash
 //! codes or ones that differs only in masked-out high bits. Here, the Java implementation uses an
 //! optimization where a bin is turned into a binary tree, but this has not yet been ported over to
