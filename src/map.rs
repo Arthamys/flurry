@@ -1729,6 +1729,20 @@ where
 
     #[inline]
     /// Returns the number of entries in the map.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use flurry::HashMap;
+    /// use crossbeam_epoch as epoch;
+    ///
+    /// let map = HashMap::new();
+    /// let guard = epoch::pin();
+    ///
+    /// assert_eq!(map.len(), 0);
+    /// map.insert(1, "a", &guard);
+    /// assert_eq!(map.len(), 1);
+    /// ```
     pub fn len(&self) -> usize {
         self.count.load(Ordering::Relaxed)
     }
