@@ -1705,7 +1705,22 @@ where
     /// An iterator visiting all values in arbitrary order.
     /// The iterator element type is `&'g V`.
     ///
-    /// To obtain a `Guard`, use [`epoch::pin`].
+    /// # Examples
+    ///
+    /// ```
+    /// use flurry::HashMap;
+    /// use crossbeam_epoch as epoch;
+    ///
+    /// let map = HashMap::new();
+    /// let guard = epoch::pin();
+    /// map.insert("a", 1, &guard);
+    /// map.insert("b", 2, &guard);
+    /// map.insert("c", 3, &guard);
+    ///
+    /// for val in map.values(&guard) {
+    ///     println!("{}", val);
+    /// }
+    /// ```
     pub fn values<'g>(&'g self, guard: &'g Guard) -> Values<'g, K, V> {
         let table = self.table.load(Ordering::SeqCst, guard);
         let node_iter = NodeIter::new(table, guard);
