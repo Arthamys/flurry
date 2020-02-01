@@ -1764,6 +1764,20 @@ where
 
     #[inline]
     /// Returns `true` if the map is empty. Otherwise returns `false`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use flurry::HashMap;
+    /// use crossbeam_epoch as epoch;
+    ///
+    /// let map = HashMap::new();
+    /// let guard = epoch::pin();
+    ///
+    /// assert!(map.is_empty());
+    /// map.insert(1, "a", &guard);
+    /// assert!(!map.is_empty());
+    /// ```
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
