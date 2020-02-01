@@ -1747,6 +1747,14 @@ where
     /// An iterator visiting all values in arbitrary order.
     /// The iterator element type is `&'g V`.
     ///
+    /// This method, like most methods in flurry, can be executed concurrently
+    /// with modifications to the underlying map. If such concurrent
+    /// modification occurs, this method may return unexpected results.
+    /// See the "Consistency" section in the [`crate-level documentation`]
+    /// for details.
+    ///
+    /// [`crate-level documentation`]: index.html#consistency
+    ///
     /// # Examples
     ///
     /// ```
