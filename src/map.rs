@@ -1441,8 +1441,9 @@ where
     /// ```
     /// use flurry::HashMap;
     /// use crossbeam_epoch as epoch;
+    /// use std::collections::hash_map::RandomState;
     ///
-    /// let map = HashMap::new();
+    /// let map : HashMap<i32, &str, RandomState> = HashMap::new();
     /// let guard = epoch::pin();
     /// map.insert(1, "a", &guard);
     /// assert_eq!(map.remove(&1, &guard), Some(&"a"));
@@ -1634,14 +1635,15 @@ where
     /// ```
     /// use flurry::HashMap;
     /// use crossbeam_epoch as epoch;
+    /// use std::collections::hash_map::RandomState;
     ///
-    /// let map = HashMap::new();
+    /// let map : HashMap<i32, i32, RandomState> = HashMap::new();
     /// let guard = epoch::pin();
     ///
     /// for i in 0..8 {
     ///     map.insert(i, i*10, &guard);
     /// }
-    /// map.retain(|&k, _| k % 2 == 0);
+    /// map.retain(|&k, _| k % 2 == 0, &guard);
     /// assert_eq!(map.len(), 4);
     /// ```
     ///
@@ -1665,10 +1667,27 @@ where
 
     /// Retains only the elements specified by the predicate.
     ///
-    /// In other words, remove all pairs (k, v) such that f(&k,&v) returns false.
+    /// In other words, remove all pairs `(k, v)` such that `f(&k,&v)` returns `false`.
     ///
     /// This method always deletes any key/value pair that `f` returns `false` for,
     /// even if if the value is updated concurrently. If you do not want that behavior, use [`HashMap::retain`].
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use flurry::HashMap;
+    /// use crossbeam_epoch as epoch;
+    /// use std::collections::hash_map::RandomState;
+    ///
+    /// let map : HashMap<i32, i32, RandomState> = HashMap::new();
+    /// let guard = epoch::pin();
+    ///
+    /// for i in 0..8 {
+    ///     map.insert(i, i*10, &guard);
+    /// }
+    /// map.retain_force(|&k, _| k % 2 == 0, &guard);
+    /// assert_eq!(map.len(), 4);
+    /// ```
     pub fn retain_force<F>(&self, mut f: F, guard: &Guard)
     where
         F: FnMut(&K, &V) -> bool,
@@ -1709,8 +1728,9 @@ where
     /// ```
     /// use flurry::HashMap;
     /// use crossbeam_epoch as epoch;
+    /// use std::collections::hash_map::RandomState;
     ///
-    /// let map = HashMap::new();
+    /// let map : HashMap<&str, i32, RandomState> = HashMap::new();
     /// let guard = epoch::pin();
     /// map.insert("a", 1, &guard);
     /// map.insert("b", 2, &guard);
@@ -1734,8 +1754,9 @@ where
     /// ```
     /// use flurry::HashMap;
     /// use crossbeam_epoch as epoch;
+    /// use std::collections::hash_map::RandomState;
     ///
-    /// let map = HashMap::new();
+    /// let map : HashMap<i32, &str, RandomState>= HashMap::new();
     /// let guard = epoch::pin();
     ///
     /// assert_eq!(map.len(), 0);
@@ -1769,8 +1790,9 @@ where
     /// ```
     /// use flurry::HashMap;
     /// use crossbeam_epoch as epoch;
+    /// use std::collections::hash_map::RandomState;
     ///
-    /// let map = HashMap::new();
+    /// let map : HashMap<i32, &str, RandomState> = HashMap::new();
     /// let guard = epoch::pin();
     ///
     /// assert!(map.is_empty());
